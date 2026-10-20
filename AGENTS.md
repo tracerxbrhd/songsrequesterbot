@@ -1,31 +1,35 @@
 # Songs Requester — Agent Instructions
 
-## Product scope
-Personal Telegram bot, **only Yandex Music**. Do not reintroduce other providers or multi-provider registries without an explicit user request.
-Access is already restricted by the owner in BotFather; handlers receive only private chats.
+## Scope
+- PERSONAL Telegram bot, **only Yandex Music**. No Spotify, Jamendo or other sources.
+- Python 3.12 on Yandex Cloud Functions. No Telegram Cloud Serverless runtime.
+- Telegram bot + catalog search + raw MP3 when authorized; no DRM or restricted-content circumvention.
 
-## Runtime
-- Telegram Cloud Serverless V8; only sdk and relative .js imports under tgcloud/.
-- No Node, npm modules, filesystems, browser URL/URLSearchParams/TextEncoder or FFmpeg.
-- sdk.fetch returns text HTTP content. No arbitrary binary MP3 download into InputFile.
-- The gitignored tgcloud/lib/runtime-secrets.js is generated during GitHub Actions from YANDEX_OAUTH_TOKEN. Never commit or print it.
-- Do not log API response bodies, account data, auth headers or expiring CDN URLs.
+## Layout / Commands
+- Function root: `cloud_function/`. Entrypoint: `index.handler`.
+- Dependencies: `cloud_function/requirements.txt`; pin exact versions.
+- Tests: `PYTHONPATH=cloud_function python -m unittest discover -s tests -v`.
+- GitHub Actions CI/deploy; deploy only from main after bootstrap.
+- Do not merge PR without owner request.
 
-## Yandex requests
-- Metadata: POST /tracks with form track-ids. GET /tracks/{id} is incorrect.
-- Search: GET /search using Android client profile.
-- Audio: signed GET /get-file-info, desktop profile, codec=mp3, transport=raw.
-- A 403 is an access refusal. Do not bypass it through alternate clients,
-  cookies, proxies or encraw decryption.
-- All audio URLs must pass the strict allowlist; store Telegram file_id only.
-- Report fixed safe diagnostic codes (distinguish HTTP 400, 403 etc).
+## Security
+- Public webhook endpoint MUST validate X-Telegram-Bot-Api-Secret-Token with compare_digest.
+- OWNER_TELEGRAM_ID is required and fail-closed even if BotFather has a personal restriction.
+- Owner private chats only, ignore forged/non-owner updates.
+- Never print bot token, Yandex OAuth, webhook secret, Lockbox content, signed CDN URLs, or raw API responses.
+- Secrets only via Lockbox injected into the function; deployment key only in GitHub Secrets.
+- YC deploy never automatically steals the existing Telegram Cloud webhook. Manual workflow_dispatch cutover after a successful in-cloud probe.
+- Keep max_connections=1 while synchronous webhook handling has no durable idempotency store.
 
-## Release process
-- Run npm run check and npm test before PR.
-- Only main deploys. Do not merge without the user's request.
+## Yandex Music
+- Use community library MarshalX `yandex-music==3.2.2`.
+- Request only `raw` `mp3`, no decrypt `encraw`, no 403/451 bypass, no proxy/IP evasion.
+- Downloads must validate approved CDN hosts and paths; no arbitrary URLs or redirects.
+- Limit size to 40 MiB. Upload files only within the applicable rights.
+- CI does not guarantee availability of a specific track or resolution of earlier 451/403.
 
-## Current investigation
-- Exact HTTP 400-599 codes must be preserved in /diagnose; do not collapse to 4XX/5XX.
-- /account/status is only successful authentication when result.account.uid exists; never display UID.
-- For POST /tracks use sdk.fetch.body.form({ 'track-ids': id, 'with-positions': 'True' }) when present; fallback to correctly encoded form body only for older SDKs.
-- HTTP 403 raw file requests must not trigger bypass retries.
+## Cloud
+- Separate deploy SA and runtime SA.
+- Runtime SA gets lockbox.payloadViewer for ONE project secret.
+- Deploy SA gets functions.editor on folder, iam.serviceAccounts.user on runtime SA, and payloadViewer only if cutover is performed via Actions.
+- All three runtime secrets must be in pinned YC_LOCKBOX_VERSION_ID.
