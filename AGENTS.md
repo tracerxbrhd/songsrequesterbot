@@ -1,38 +1,25 @@
-# Songs Requester Bot — Agent Instructions
+# Songs Requester — Agent Instructions
 
-This is a PERSONAL Telegram Cloud Serverless bot. The user has restricted access
-to their account in BotFather, so do not reintroduce duplicate owner ID checks
-without an explicit request. If the BotFather restriction is ever removed, the
-bot does not have an independent access-control layer.
+## Product scope
+Personal Telegram bot, **only Yandex Music**. Do not reintroduce other providers or multi-provider registries without an explicit user request.
+Access is already restricted by the owner in BotFather; handlers receive only private chats.
 
-## Runtime rules
-- The only deployed code is JavaScript under tgcloud/. Use sdk + relative .js imports.
-- No runtime npm modules, process.env, filesystem, Node built-ins or FFmpeg.
-- The OAuth runtime module tgcloud/lib/runtime-secrets.js is GENERATED IN CI,
-  is excluded by .gitignore, and must NEVER be committed.
-- Use scripts/prepare-runtime-secrets.mjs in CI before tgcloud push.
-- Do not log OAuth tokens, HTTP auth headers or expiring CDN URLs.
+## Runtime
+- Telegram Cloud Serverless V8; only sdk and relative .js imports under tgcloud/.
+- No Node, npm modules, filesystems, browser URL/URLSearchParams/TextEncoder or FFmpeg.
+- sdk.fetch returns text HTTP content. No arbitrary binary MP3 download into InputFile.
+- The gitignored tgcloud/lib/runtime-secrets.js is generated during GitHub Actions from YANDEX_OAUTH_TOKEN. Never commit or print it.
+- Do not log API response bodies, account data, auth headers or expiring CDN URLs.
 
-## Yandex behavior
-- Authorization is a user's OAuth token from GitHub Actions Secret YANDEX_OAUTH_TOKEN.
-- /get-file-info signature matches the Yandex desktop client convention.
-- Request only codec mp3 and transport raw. NEVER decrypt encraw or bypass DRM.
-- Validate generated CDN host/path. Never fetch arbitrary user URLs.
-- CDN URLs expire rapidly and are never persisted; cache only Telegram file_id.
-- Do not promise that all content is downloadable. Respect rights and API failures.
+## Yandex requests
+- Metadata: POST /tracks with form track-ids. GET /tracks/{id} is incorrect.
+- Search: GET /search using Android client profile.
+- Audio: signed GET /get-file-info, desktop profile, codec=mp3, transport=raw.
+- A 403 is an access refusal. Do not bypass it through alternate clients,
+  cookies, proxies or encraw decryption.
+- All audio URLs must pass the strict allowlist; store Telegram file_id only.
+- Report fixed safe diagnostic codes (distinguish HTTP 400, 403 etc).
 
-## Other providers
-- Jamendo requires audiodownload_allowed=true.
-- Keep provider modules behind the registry and delivery outside handlers.
-
-## Quality and deployment
-- npm run check and npm test validate pure JS; real cloud behavior requires smoke-test.
-- Deploy only from main using GitHub Actions.
-- Don't merge pull requests unless explicitly asked.
-
-## Serverless specifics
-- Browser URL, URLSearchParams and TextEncoder globals are not guaranteed; use pure string parsing and pure JS UTF-8/HMAC.
-- Use Android X-Yandex-Music-Client for metadata/search and Desktop only for signed file-info.
-- Never mask a failed primary provider as an empty search result.
-- /diagnose must emit only fixed status codes, never raw server replies, auth headers or CDN URLs.
-- sdk.fetch is text-oriented; don't attempt to stream arbitrary MP3 response bytes into InputFile.
+## Release process
+- Run npm run check and npm test before PR.
+- Only main deploys. Do not merge without the user's request.

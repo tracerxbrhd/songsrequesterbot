@@ -1,5 +1,4 @@
-// Pure contract helpers for the unofficial Yandex Music API.
-// Derived from the client profiles used in yandex-music-api (MarshalX).
+// Pure Yandex Music protocol helpers. No credentials in this file.
 export const YANDEX_ANDROID_CLIENT = 'YandexMusicAndroid/24023621';
 export const YANDEX_DESKTOP_CLIENT = 'YandexMusicDesktopAppWindows/5.95.0';
 
@@ -13,13 +12,33 @@ export function yandexHeaders(token, profile = 'android') {
   return headers;
 }
 
+export function yandexTrackLookup(trackId) {
+  const id = String(trackId ?? '');
+  if (!/^[1-9]\d{0,15}$/.test(id)) throw new Error('YANDEX_TRACK_INVALID');
+  // MarshalX/yandex-music-api _BatchMixin._get_list('track') calls:
+  // POST https://api.music.yandex.net/tracks with form field "track-ids".
+  // GET /tracks/{id} is *not* the track metadata lookup endpoint.
+  return {
+    path: '/tracks',
+    method: 'POST',
+    body: 'with-positions=True&track-ids=' + encodeURIComponent(id),
+  };
+}
+
 export function yandexHttpError(status) {
-  if (status === 401) return 'YANDEX_HTTP_401';
-  if (status === 403) return 'YANDEX_HTTP_403';
-  if (status === 404) return 'YANDEX_HTTP_404';
-  if (status === 429) return 'YANDEX_HTTP_429';
-  if (status >= 500 && status <= 599) return 'YANDEX_HTTP_5XX';
-  return 'YANDEX_HTTP_OTHER';
+  switch (status) {
+    case 400: return 'YANDEX_HTTP_400';
+    case 401: return 'YANDEX_HTTP_401';
+    case 403: return 'YANDEX_HTTP_403';
+    case 404: return 'YANDEX_HTTP_404';
+    case 408: return 'YANDEX_HTTP_408';
+    case 422: return 'YANDEX_HTTP_422';
+    case 429: return 'YANDEX_HTTP_429';
+    default:
+      if (Number.isInteger(status) && status >= 400 && status < 500) return 'YANDEX_HTTP_4XX';
+      if (Number.isInteger(status) && status >= 500 && status < 600) return 'YANDEX_HTTP_5XX';
+      return 'YANDEX_HTTP_UNKNOWN';
+  }
 }
 
 export function unwrapYandexEnvelope(envelope, profile = 'android') {
@@ -27,9 +46,7 @@ export function unwrapYandexEnvelope(envelope, profile = 'android') {
     throw new Error('YANDEX_JSON_INVALID');
   }
   if (envelope.error) throw new Error('YANDEX_API_ERROR');
-  if (Object.prototype.hasOwnProperty.call(envelope, 'result')) {
-    return envelope.result;
-  }
+  if (Object.prototype.hasOwnProperty.call(envelope, 'result')) return envelope.result;
   if (profile === 'desktop' &&
       Object.prototype.hasOwnProperty.call(envelope, 'downloadInfo')) {
     return envelope;
@@ -38,6 +55,7 @@ export function unwrapYandexEnvelope(envelope, profile = 'android') {
 }
 
 export function parseTrackResult(result) {
+  if (result === null) return [];
   if (!Array.isArray(result)) throw new Error('YANDEX_TRACK_SCHEMA');
   return result;
 }
@@ -61,31 +79,34 @@ export function parseSearchResult(result) {
   return items;
 }
 
-export function publicYandexError(error) {
-  // Never display arbitrary exception strings or upstream JSON; only fixed codes.
+export function safeYandexErrorCode(error) {
+  // A fixed code vocabulary: do not copy raw HTTP bodies, OAuth or URLs.
   const code = String(error?.message || '');
-  if (code === 'YANDEX_TOKEN_MISSING') return '🔑 OAuth-токен Яндекса не настроен.';
-  if (code === 'YANDEX_HTTP_401') return '🔑 Яндекс отклонил OAuth: HTTP 401. Проверь токен.';
-  if (code === 'YANDEX_HTTP_403') return '⛔ Яндекс запретил запрос: HTTP 403. Возможны ограничения аккаунта, региона или API.';
-  if (code === 'YANDEX_HTTP_404') return '🔎 Яндекс не нашёл запрошенный ресурс: HTTP 404.';
-  if (code === 'YANDEX_HTTP_429') return '⏳ Слишком много запросов к Яндексу: HTTP 429.';
-  if (code === 'YANDEX_HTTP_5XX') return '⚠️ Ошибка сервера Яндекса (HTTP 5xx).';
-  if (code === 'YANDEX_HTTP_OTHER') return '⚠️ Яндекс отклонил запрос (нестандартный HTTP-код).';
-  if (code === 'YANDEX_NETWORK') return '🌐 Telegram Cloud не смог подключиться к API Яндекса.';
-  if (code === 'YANDEX_JSON_INVALID') return '⚠️ Яндекс вернул ответ, который не удалось прочитать как JSON.';
-  if (code === 'YANDEX_API_ERROR') return '⚠️ Яндекс вернул ошибку API.';
-  if (code === 'YANDEX_RESULT_MISSING' || code === 'YANDEX_TRACK_SCHEMA' ||
-      code === 'YANDEX_SEARCH_SCHEMA') {
-    return '⚠️ Изменилась структура ответа API Яндекса.';
-  }
-  if (code === 'YANDEX_RAW_MP3_UNAVAILABLE') return
-    '🔒 API Яндекса не предоставил обычный MP3 для этой композиции.';
-  if (code === 'YANDEX_UNTRUSTED_AUDIO_URL') return
-    '🛡️ API вернул неизвестный адрес аудио. Загрузка остановлена.';
-  return '⚠️ Неожиданная ошибка обработки запроса (код: OTHER).';
+  return /^YANDEX_[A-Z0-9_]{3,40}$/.test(code) ? code : 'YANDEX_UNEXPECTED';
 }
 
-export function safeYandexErrorCode(error) {
-  const value = String(error?.message || '');
-  return /^YANDEX_[A-Z0-9_]{3,40}$/.test(value) ? value : 'YANDEX_UNEXPECTED';
+export function publicYandexError(error) {
+  const code = safeYandexErrorCode(error);
+  const messages = {
+    YANDEX_TOKEN_MISSING: '🔑 OAuth-токен Яндекса не настроен.',
+    YANDEX_HTTP_400: '⚠️ Яндекс отклонил параметры запроса (HTTP 400).',
+    YANDEX_HTTP_401: '🔑 Яндекс отклонил OAuth (HTTP 401). Проверь токен.',
+    YANDEX_HTTP_403: '⛔ Яндекс запретил запрос (HTTP 403). Доступ к этой операции не предоставлен.',
+    YANDEX_HTTP_404: '🔎 Яндекс не нашёл ресурс (HTTP 404).',
+    YANDEX_HTTP_408: '⏳ Яндекс не успел ответить (HTTP 408).',
+    YANDEX_HTTP_422: '⚠️ Яндекс не принял формат данных (HTTP 422).',
+    YANDEX_HTTP_429: '⏳ Яндекс ограничил частоту запросов (HTTP 429).',
+    YANDEX_HTTP_4XX: '⚠️ Яндекс отклонил запрос (HTTP 4xx).',
+    YANDEX_HTTP_5XX: '⚠️ Внутренняя ошибка сервера Яндекса (HTTP 5xx).',
+    YANDEX_HTTP_UNKNOWN: '⚠️ Не удалось определить HTTP-ответ API Яндекса.',
+    YANDEX_NETWORK: '🌐 Нет соединения Telegram Cloud с API Яндекса.',
+    YANDEX_JSON_INVALID: '⚠️ Яндекс вернул некорректный JSON.',
+    YANDEX_API_ERROR: '⚠️ Яндекс вернул ошибку API.',
+    YANDEX_RESULT_MISSING: '⚠️ Яндекс изменил формат ответа API.',
+    YANDEX_TRACK_SCHEMA: '⚠️ Неожиданный формат данных о треке.',
+    YANDEX_SEARCH_SCHEMA: '⚠️ Неожиданный формат поисковой выдачи.',
+    YANDEX_RAW_MP3_UNAVAILABLE: '🔒 Яндекс не предоставил обычный MP3 для этого трека.',
+    YANDEX_UNTRUSTED_AUDIO_URL: '🛡️ Яндекс вернул неизвестный адрес аудио. Загрузка остановлена.',
+  };
+  return messages[code] || '⚠️ Ошибка при обращении к Яндекс Музыке (' + code + ').';
 }

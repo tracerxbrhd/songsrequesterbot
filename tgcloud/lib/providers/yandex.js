@@ -4,19 +4,23 @@ import { yandexFileInfoSignature } from '../crypto-hmac.js';
 import { encodeQueryParams, isYandexAudioUrl, validTrackId } from '../pure.js';
 import { normalizeYandex } from './normalize.js';
 import {
-  yandexHeaders, yandexHttpError, unwrapYandexEnvelope, parseTrackResult, parseSearchResult,
-  safeYandexErrorCode,
+  yandexHeaders, yandexTrackLookup, yandexHttpError, unwrapYandexEnvelope,
+  parseTrackResult, parseSearchResult, safeYandexErrorCode,
 } from './yandex-protocol.js';
 
 const API = 'https://api.music.yandex.net';
 
-// All sensitive response content stays on the Yandex side: only whitelisted
-// status/error codes may be reported to Telegram or logs.
-async function getResult(path, profile = 'android') {
+// Never print response bodies, authorization headers or expiring CDN URLs.
+async function getResult(path, profile = 'android', request = {}) {
+  const method = request.method || 'GET';
+  const headers = yandexHeaders(YANDEX_OAUTH_TOKEN, profile);
+  if (method === 'POST') headers['Content-Type'] = 'application/x-www-form-urlencoded';
+
   let response;
   try {
     response = await fetch(API + path, {
-      headers: yandexHeaders(YANDEX_OAUTH_TOKEN, profile),
+      method, headers,
+      ...(request.body !== undefined ? { body: request.body } : {}),
     });
   } catch (_) {
     throw new Error('YANDEX_NETWORK');
@@ -33,15 +37,16 @@ async function getResult(path, profile = 'android') {
 }
 
 export function hasYandexOAuth() {
-  // Presence is NOT validity. /diagnose performs actual requests.
+  // The presence of a token does not prove validity or subscription rights.
   return Boolean(YANDEX_OAUTH_TOKEN);
 }
 
 export async function getYandexTrack(id) {
   if (!validTrackId(id)) return null;
-  const result = await getResult('/tracks/' + encodeURIComponent(id));
-  const items = parseTrackResult(result);
-  return normalizeYandex(items[0]);
+  const request = yandexTrackLookup(id);
+  const result = await getResult(request.path, 'android', request);
+  const tracks = parseTrackResult(result);
+  return normalizeYandex(tracks[0]);
 }
 
 export async function searchYandex(query) {
@@ -50,11 +55,11 @@ export async function searchYandex(query) {
     'playlist-in-best': 'True',
   });
   const result = await getResult('/search?' + params);
-  return parseSearchResult(result).slice(0, 5).map(normalizeYandex).filter(Boolean);
+  return parseSearchResult(result).slice(0, 8).map(normalizeYandex).filter(Boolean);
 }
 
-// Fetch only unencrypted MP3 when the account/API explicitly exposes one.
-// Links are short-lived and must be resolved at download time.
+// Access only an unencrypted MP3 the authenticated API actually permits.
+// Do not retry a forbidden request using alternate clients or decrypt encraw.
 export async function getYandexRawMp3(trackId) {
   if (!YANDEX_OAUTH_TOKEN) throw new Error('YANDEX_TOKEN_MISSING');
   if (!validTrackId(trackId)) throw new Error('YANDEX_TRACK_INVALID');
@@ -83,8 +88,7 @@ export async function getYandexRawMp3(trackId) {
 
 async function checkOne(name, fn) {
   try {
-    const value = await fn();
-    return name + ': ✅ ' + value;
+    return name + ': ✅ ' + await fn();
   } catch (error) {
     const code = safeYandexErrorCode(error);
     console.warn('Yandex diagnostic', name, code);
@@ -92,32 +96,33 @@ async function checkOne(name, fn) {
   }
 }
 
-// Probes only; never return personal data, OAuth credentials, URLs, headers,
-// response bodies or Yandex account details to the Telegram chat.
+// Safe-to-share outputs: never include user ID, access tokens, URLs or payloads.
+// Each check is independent; a forbidden file request cannot hide a good search.
 export async function diagnoseYandex() {
   if (!YANDEX_OAUTH_TOKEN) return ['OAuth: ⚠️ токен отсутствует'];
-  const [account, track, search, audio] = await Promise.all([
+  return Promise.all([
     checkOne('Авторизация', async () => {
-      const value = await getResult('/account/status');
-      if (!value || typeof value !== 'object') throw new Error('YANDEX_RESULT_MISSING');
-      return 'API ответил';
+      const status = await getResult('/account/status');
+      if (!status || typeof status !== 'object') throw new Error('YANDEX_RESULT_MISSING');
+      return 'API ответил (права на скачивание не проверены)';
     }),
     checkOne('Трек 126278860', async () => {
-      const result = parseTrackResult(await getResult('/tracks/126278860'));
-      return result.length ? 'данные получены' : 'ответ пустой';
+      const req = yandexTrackLookup('126278860');
+      const tracks = parseTrackResult(await getResult(req.path, 'android', req));
+      return tracks.length ? 'данные получены' : 'трек не найден';
     }),
     checkOne('Поиск «Монеточка»', async () => {
       const query = encodeQueryParams({
         text: 'Монеточка', nocorrect: 'False', type: 'track',
         page: 0, 'playlist-in-best': 'True',
       });
-      const result = parseSearchResult(await getResult('/search?' + query));
-      return result.length + ' результатов';
+      const tracks = parseSearchResult(await getResult('/search?' + query));
+      return tracks.length + ' результатов';
     }),
     checkOne('MP3 raw (126278860)', async () => {
       const info = await getYandexRawMp3('126278860');
-      return 'доступен ' + info.quality + (info.bitrate ? ' · ' + info.bitrate + ' кбит/с' : '');
+      return 'доступен ' + info.quality +
+        (info.bitrate ? ' · ' + info.bitrate + ' кбит/с' : '');
     }),
   ]);
-  return [account, track, search, audio];
 }
