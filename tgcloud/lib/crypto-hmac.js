@@ -1,5 +1,28 @@
 // Dependency-free HMAC-SHA256 for Telegram Cloud's V8 sandbox.
 // WebCrypto availability is not assumed; no Node.js dependencies.
+// UTF-8 encoding without TextEncoder (not guaranteed in Telegram Cloud V8).
+function utf8Bytes(value) {
+  const output = [];
+  const source = String(value);
+  for (let i = 0; i < source.length; i++) {
+    let n = source.codePointAt(i);
+    if (n > 0xFFFF) i++;
+    if (n >= 0xD800 && n <= 0xDFFF) n = 0xFFFD;
+    if (n <= 0x7F) {
+      output.push(n);
+    } else if (n <= 0x7FF) {
+      output.push(0xC0 | (n >>> 6), 0x80 | (n & 0x3F));
+    } else if (n <= 0xFFFF) {
+      output.push(0xE0 | (n >>> 12), 0x80 | ((n >>> 6) & 0x3F),
+        0x80 | (n & 0x3F));
+    } else {
+      output.push(0xF0 | (n >>> 18), 0x80 | ((n >>> 12) & 0x3F),
+        0x80 | ((n >>> 6) & 0x3F), 0x80 | (n & 0x3F));
+    }
+  }
+  return new Uint8Array(output);
+}
+
 const K = [
   0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
   0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
@@ -14,7 +37,7 @@ const K = [
 function rotate(x, n) { return (x >>> n) | (x << (32 - n)); }
 
 function sha256(input) {
-  const source = input instanceof Uint8Array ? input : new TextEncoder().encode(input);
+  const source = input instanceof Uint8Array ? input : utf8Bytes(input);
   const length = source.length;
   const paddedLength = Math.ceil((length + 9) / 64) * 64;
   const data = new Uint8Array(paddedLength);
@@ -62,14 +85,13 @@ function concat(a, b) {
 }
 
 export function hmacSha256(key, message) {
-  const encoder = new TextEncoder();
-  let bytes = encoder.encode(key);
+  let bytes = utf8Bytes(key);
   if (bytes.length > 64) bytes = sha256(bytes);
   const inner = new Uint8Array(64), outer = new Uint8Array(64);
   inner.fill(0x36);
   outer.fill(0x5c);
   for (let i = 0; i < bytes.length; i++) { inner[i] ^= bytes[i]; outer[i] ^= bytes[i]; }
-  return sha256(concat(outer, sha256(concat(inner, encoder.encode(message)))));
+  return sha256(concat(outer, sha256(concat(inner, utf8Bytes(message)))));
 }
 
 function base64(bytes) {
