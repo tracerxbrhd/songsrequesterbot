@@ -1,7 +1,7 @@
 import { fetch } from 'sdk';
 import { YANDEX_OAUTH_TOKEN } from '../runtime-secrets.js';
 import { yandexFileInfoSignature } from '../crypto-hmac.js';
-import { isYandexAudioUrl, validTrackId } from '../pure.js';
+import { encodeQueryParams, isYandexAudioUrl, validTrackId } from '../pure.js';
 import { normalizeYandex } from './normalize.js';
 
 const API = 'https://api.music.yandex.net';
@@ -46,7 +46,7 @@ export async function getYandexRawMp3(trackId) {
     const timestamp = Math.floor(Date.now() / 1000);
     const codecs = ['mp3'];
     const transport = 'raw';
-    const query = new URLSearchParams({
+    const query = encodeQueryParams({
       ts: String(timestamp), trackId,
       quality, codecs: codecs.join(','), transports: transport,
       sign: yandexFileInfoSignature(trackId, quality, codecs, transport, timestamp),
