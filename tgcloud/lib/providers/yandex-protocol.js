@@ -21,24 +21,25 @@ export function yandexTrackLookup(trackId) {
   return {
     path: '/tracks',
     method: 'POST',
-    body: 'with-positions=True&track-ids=' + encodeURIComponent(id),
+    form: { 'with-positions': 'True', 'track-ids': id },
   };
 }
 
+// Preserve the *exact* upstream 400-599 code, never the response body.
+// The former broad "4XX" category hid 405/451 and made API debugging blind.
 export function yandexHttpError(status) {
-  switch (status) {
-    case 400: return 'YANDEX_HTTP_400';
-    case 401: return 'YANDEX_HTTP_401';
-    case 403: return 'YANDEX_HTTP_403';
-    case 404: return 'YANDEX_HTTP_404';
-    case 408: return 'YANDEX_HTTP_408';
-    case 422: return 'YANDEX_HTTP_422';
-    case 429: return 'YANDEX_HTTP_429';
-    default:
-      if (Number.isInteger(status) && status >= 400 && status < 500) return 'YANDEX_HTTP_4XX';
-      if (Number.isInteger(status) && status >= 500 && status < 600) return 'YANDEX_HTTP_5XX';
-      return 'YANDEX_HTTP_UNKNOWN';
-  }
+  const value = typeof status === 'number' ? status : Number(status);
+  return Number.isInteger(value) && value >= 400 && value <= 599
+    ? 'YANDEX_HTTP_' + value
+    : 'YANDEX_HTTP_UNKNOWN';
+}
+
+// Only a populated account.uid confirms OAuth resolves to a Yandex account.
+// A 200 response from /account/status by itself is not sufficient evidence.
+export function confirmedYandexAccount(status) {
+  const uid = status?.account?.uid;
+  if (typeof uid === 'number') return Number.isSafeInteger(uid) && uid > 0;
+  return typeof uid === 'string' && /^[1-9]\d{0,19}$/.test(uid);
 }
 
 export function unwrapYandexEnvelope(envelope, profile = 'android') {
@@ -96,8 +97,6 @@ export function publicYandexError(error) {
     YANDEX_HTTP_408: '⏳ Яндекс не успел ответить (HTTP 408).',
     YANDEX_HTTP_422: '⚠️ Яндекс не принял формат данных (HTTP 422).',
     YANDEX_HTTP_429: '⏳ Яндекс ограничил частоту запросов (HTTP 429).',
-    YANDEX_HTTP_4XX: '⚠️ Яндекс отклонил запрос (HTTP 4xx).',
-    YANDEX_HTTP_5XX: '⚠️ Внутренняя ошибка сервера Яндекса (HTTP 5xx).',
     YANDEX_HTTP_UNKNOWN: '⚠️ Не удалось определить HTTP-ответ API Яндекса.',
     YANDEX_NETWORK: '🌐 Нет соединения Telegram Cloud с API Яндекса.',
     YANDEX_JSON_INVALID: '⚠️ Яндекс вернул некорректный JSON.',
@@ -108,5 +107,21 @@ export function publicYandexError(error) {
     YANDEX_RAW_MP3_UNAVAILABLE: '🔒 Яндекс не предоставил обычный MP3 для этого трека.',
     YANDEX_UNTRUSTED_AUDIO_URL: '🛡️ Яндекс вернул неизвестный адрес аудио. Загрузка остановлена.',
   };
+  const match = /^YANDEX_HTTP_([45]\d{2})$/.exec(code);
+  if (match) {
+    if (match[1] === '405') {
+      return '⚠️ HTTP 405: API Яндекса отклонил HTTP-метод запроса.';
+    }
+    if (match[1] === '451') {
+      return '⚠️ HTTP 451: контент может быть недоступен по региональным или правовым ограничениям.';
+    }
+    if (match[1][0] === '5') {
+      return '⚠️ Яндекс вернул серверную ошибку HTTP ' + match[1] + '.';
+    }
+    return '⚠️ Яндекс отклонил запрос (HTTP ' + match[1] + ').';
+  }
+  if (code === 'YANDEX_ACCOUNT_UNVERIFIED') {
+    return '🔑 API ответил, но не подтвердил действующую учётную запись Яндекса.';
+  }
   return messages[code] || '⚠️ Ошибка при обращении к Яндекс Музыке (' + code + ').';
 }

@@ -5,7 +5,7 @@ import { encodeQueryParams, isYandexAudioUrl, validTrackId } from '../pure.js';
 import { normalizeYandex } from './normalize.js';
 import {
   yandexHeaders, yandexTrackLookup, yandexHttpError, unwrapYandexEnvelope,
-  parseTrackResult, parseSearchResult, safeYandexErrorCode,
+  parseTrackResult, parseSearchResult, safeYandexErrorCode, confirmedYandexAccount,
 } from './yandex-protocol.js';
 
 const API = 'https://api.music.yandex.net';
@@ -14,14 +14,24 @@ const API = 'https://api.music.yandex.net';
 async function getResult(path, profile = 'android', request = {}) {
   const method = request.method || 'GET';
   const headers = yandexHeaders(YANDEX_OAUTH_TOKEN, profile);
-  if (method === 'POST') headers['Content-Type'] = 'application/x-www-form-urlencoded';
+  const options = { method, headers };
+  // Use the Telegram Cloud SDK's documented form helper instead of passing
+  // a plain string and assuming its HTTP bridge serializes it as a form.
+  if (request.form) {
+    if (typeof fetch.body?.form === 'function') {
+      options.body = fetch.body.form(request.form);
+    } else {
+      // Compatibility fallback for SDK revisions without form helpers.
+      headers['Content-Type'] = 'application/x-www-form-urlencoded';
+      options.body = encodeQueryParams(request.form);
+    }
+  } else if (request.body !== undefined) {
+    options.body = request.body;
+  }
 
   let response;
   try {
-    response = await fetch(API + path, {
-      method, headers,
-      ...(request.body !== undefined ? { body: request.body } : {}),
-    });
+    response = await fetch(API + path, options);
   } catch (_) {
     throw new Error('YANDEX_NETWORK');
   }
@@ -103,15 +113,15 @@ export async function diagnoseYandex() {
   return Promise.all([
     checkOne('Авторизация', async () => {
       const status = await getResult('/account/status');
-      if (!status || typeof status !== 'object') throw new Error('YANDEX_RESULT_MISSING');
-      return 'API ответил (права на скачивание не проверены)';
+      if (!confirmedYandexAccount(status)) throw new Error('YANDEX_ACCOUNT_UNVERIFIED');
+      return 'OAuth подтвердил аккаунт (права на скачивание не проверены)';
     }),
-    checkOne('Трек 126278860', async () => {
+    checkOne('Трек · POST /tracks', async () => {
       const req = yandexTrackLookup('126278860');
       const tracks = parseTrackResult(await getResult(req.path, 'android', req));
       return tracks.length ? 'данные получены' : 'трек не найден';
     }),
-    checkOne('Поиск «Монеточка»', async () => {
+    checkOne('Поиск · GET /search', async () => {
       const query = encodeQueryParams({
         text: 'Монеточка', nocorrect: 'False', type: 'track',
         page: 0, 'playlist-in-best': 'True',
@@ -119,7 +129,7 @@ export async function diagnoseYandex() {
       const tracks = parseSearchResult(await getResult('/search?' + query));
       return tracks.length + ' результатов';
     }),
-    checkOne('MP3 raw (126278860)', async () => {
+    checkOne('MP3 · GET /get-file-info', async () => {
       const info = await getYandexRawMp3('126278860');
       return 'доступен ' + info.quality +
         (info.bitrate ? ' · ' + info.bitrate + ' кбит/с' : '');

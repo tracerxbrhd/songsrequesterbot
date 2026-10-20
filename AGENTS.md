@@ -23,3 +23,9 @@ Access is already restricted by the owner in BotFather; handlers receive only pr
 ## Release process
 - Run npm run check and npm test before PR.
 - Only main deploys. Do not merge without the user's request.
+
+## Current investigation
+- Exact HTTP 400-599 codes must be preserved in /diagnose; do not collapse to 4XX/5XX.
+- /account/status is only successful authentication when result.account.uid exists; never display UID.
+- For POST /tracks use sdk.fetch.body.form({ 'track-ids': id, 'with-positions': 'True' }) when present; fallback to correctly encoded form body only for older SDKs.
+- HTTP 403 raw file requests must not trigger bypass retries.
