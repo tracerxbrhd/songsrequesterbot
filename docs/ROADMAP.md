@@ -21,3 +21,5 @@
 - Optional long-audio task queue if downloads exceed Telegram webhook timeout
 
 Do not reintroduce other music providers without a new product decision.
+
+- [x] Warm update-id deduplication releases IDs on transient processing failures

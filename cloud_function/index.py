@@ -294,14 +294,19 @@ def handler(event, context):
         update = _body(event)
     except (ValueError, TypeError, UnicodeError, json.JSONDecodeError):
         return reply(400, "invalid update")
-    if _seen(update.get("update_id")):
+    update_id = update.get("update_id")
+    if _seen(update_id):
         return reply(200, "OK")
     try:
         _route_update(update, TelegramApi(bot_token), YandexProvider(oauth), owner)
     except TelegramError:
+        # Let Telegram retry after a transient outbound failure. In-memory
+        # deduplication must not swallow that second delivery.
+        _WARM_SEEN.pop(update_id, None)
         LOG.warning("telegram outbound request failed")
         return reply(503, "delivery unavailable")
     except Exception:
+        _WARM_SEEN.pop(update_id, None)
         LOG.exception("handler failed: sanitized type only", exc_info=False)
         return reply(500, "internal error")
     return reply(200, "OK")

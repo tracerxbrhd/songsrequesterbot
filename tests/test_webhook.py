@@ -94,3 +94,17 @@ class WebhookTests(unittest.TestCase):
         request = event()
         request["body"] = "{not-json"
         self.assertEqual(index.handler(request, None)["statusCode"], 400)
+
+    def test_outbound_failure_may_be_retried_by_telegram(self):
+        from telegram_api import TelegramError
+        update = {"update_id": 7777, "message": {"from": {"id": OWNER},
+                  "chat": {"id": OWNER, "type": "private"}, "text": "/start"}}
+        with patch("index.TelegramApi") as telegram, patch("index.YandexProvider"):
+            telegram.return_value.send_message.side_effect = [
+                TelegramError("fail"), None
+            ]
+            first = index.handler(event(update), None)
+            second = index.handler(event(update), None)
+        self.assertEqual(first["statusCode"], 503)
+        self.assertEqual(second["statusCode"], 200)
+        self.assertEqual(telegram.return_value.send_message.call_count, 2)
