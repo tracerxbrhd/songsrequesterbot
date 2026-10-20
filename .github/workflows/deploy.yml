@@ -43,10 +43,25 @@ jobs:
         env:
           TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
         run: npx tgcloud fetch
-      - name: Deploy
+      - name: Deploy (recover from CLI snapshot bug)
         env:
           TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
-        run: npx tgcloud push
+        run: |
+          set -o pipefail
+          log="$(mktemp)"
+          if npx tgcloud push 2>&1 | tee "$log"; then
+            rm -f "$log"
+          elif grep -Fq 'Received type boolean (false)' "$log" \
+            && grep -Fq 'writeSnapshotFile' "$log" \
+            && grep -Fq 'replaceSnapshot' "$log"; then
+            rm -f "$log"
+            echo "::warning::Telegram Cloud CLI snapshot bug after upload; refreshing and retrying once."
+            npx tgcloud fetch
+            npx tgcloud push
+          else
+            rm -f "$log"
+            exit 1
+          fi
       - name: Safe SQLite migrations
         env:
           TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
