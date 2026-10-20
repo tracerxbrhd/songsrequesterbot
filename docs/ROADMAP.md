@@ -1,19 +1,20 @@
-# Дорожная карта
+# Songs Requester — Яндекс Музыка
 
-## Текущий PR
-- [x] Поиск и метаданные Яндекс Музыки
-- [x] Запрос обычного MP3 с OAuth и подписью /get-file-info (raw)
-- [x] Отправка MP3 в Telegram через URL или байтовый fallback
-- [x] Jamendo с проверкой разрешения правообладателя
-- [x] Cache file_id в SQLite
-- [x] Тесты подписи, URL и парсеров
-- [x] OAuth токен генерируется только во временный модуль CI
-- [x] Удалена дублирующая проверка владельца: доступ ограничен BotFather
-- [ ] Live smoke-test с реальным токеном Яндекса и Telegram Cloud
-- [ ] Проверка работы MP3 на конкретных треках
+## Current
+- [x] Only Yandex Music; remove all other providers and registry
+- [x] Shared-link parsing and catalog search
+- [x] Metadata via POST /tracks with track-ids
+- [x] Precise HTTP diagnostic codes and /diagnose
+- [x] GitHub Secrets-based OAuth, without tokens in Git
+- [x] Allowlisted raw MP3 URL handed to Telegram when permitted by Yandex
+- [x] Cached Telegram file_id in SQLite
+- [x] Regression tests for Serverless JavaScript and endpoints
+- [ ] Live smoke-test of metadata and search after deploy
+- [ ] Live smoke-test of raw MP3; last diagnostic returned HTTP 403
 
-## Следующий этап
-- Выбор доступного качества аудио
-- Более полная диагностика отказов Yandex API
-- Дополнительные разрешённые источники
-- Опциональные плейлисты (метаданные, без массового копирования контента)
+## Next
+- Better UI for search and available qualities
+- Better understanding of permitted download scenarios
+- More reliability and stale-cache recovery
+
+Other music providers are out of scope until the owner changes this decision.

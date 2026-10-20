@@ -1,13 +1,13 @@
 {
   "name": "songsrequesterbot",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "Personal Telegram Cloud music bot with Yandex Music and Jamendo.",
+  "description": "Personal Yandex Music Telegram bot on Telegram Cloud Serverless.",
   "scripts": {
     "test": "node --test tests/*.test.js",
     "generate:runtime": "node scripts/prepare-runtime-secrets.mjs",
-    "check": "node scripts/prepare-runtime-secrets.mjs && node --check tgcloud/handlers/message.js && node --check tgcloud/handlers/callback_query.js && node --check tgcloud/schema.js && node --check tgcloud/lib/config.js && node --check tgcloud/lib/runtime-secrets.js && node --check tgcloud/lib/crypto-hmac.js && node --check tgcloud/lib/pure.js && node --check tgcloud/lib/ui.js && node --check tgcloud/lib/storage.js && node --check tgcloud/lib/delivery.js && node --check tgcloud/lib/providers/normalize.js && node --check tgcloud/lib/providers/yandex.js && node --check tgcloud/lib/providers/yandex-protocol.js && node --check tgcloud/lib/providers/jamendo.js && node --check tgcloud/lib/providers/registry.js",
+    "check": "node scripts/prepare-runtime-secrets.mjs && node --check tgcloud/handlers/message.js && node --check tgcloud/handlers/callback_query.js && node --check tgcloud/schema.js && node --check tgcloud/lib/config.js && node --check tgcloud/lib/runtime-secrets.js && node --check tgcloud/lib/crypto-hmac.js && node --check tgcloud/lib/pure.js && node --check tgcloud/lib/ui.js && node --check tgcloud/lib/storage.js && node --check tgcloud/lib/delivery.js && node --check tgcloud/lib/providers/normalize.js && node --check tgcloud/lib/providers/yandex.js && node --check tgcloud/lib/providers/yandex-protocol.js",
     "deploy": "tgcloud push",
     "migrate": "tgcloud migrate --safe",
     "status": "tgcloud status"

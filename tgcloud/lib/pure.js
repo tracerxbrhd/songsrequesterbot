@@ -1,9 +1,7 @@
 const YANDEX_HOSTS = new Set(['music.yandex.ru', 'music.yandex.com', 'music.yandex.by']);
-const JAMENDO_HOSTS = new Set(['jamendo.com', 'www.jamendo.com']);
 
-// Telegram Cloud runs JavaScript in a bare V8 isolate, not a browser or Node.
-// Parse a strictly limited HTTPS URL here instead of relying on browser globals.
-// The returned hostname/pathname are enough for fixed-domain music links.
+// Telegram Cloud's bare V8 runtime does not expose browser URL globals.
+// Only HTTPS URLs with valid ASCII host names, no credentials or custom ports.
 export function parseHttpsUrl(value) {
   if (typeof value !== 'string' || value.length > 4096 ||
       /[\u0000-\u0020\u007f\\]/.test(value)) return null;
@@ -21,29 +19,21 @@ export function encodeQueryParams(params) {
     encodeURIComponent(key) + '=' + encodeURIComponent(String(value))).join('&');
 }
 
+export function validTrackId(value) {
+  return typeof value === 'string' && /^[1-9]\d{0,15}$/.test(value);
+}
+
 export function parseRequest(raw) {
   const input = typeof raw === 'string' ? raw.trim() : '';
   if (!input || input.length > 2048) return { kind: 'invalid' };
   if (/^https?:\/\//i.test(input)) {
     const url = parseHttpsUrl(input);
-    if (!url) return { kind: 'unsupported' };
-    const host = url.hostname;
+    if (!url || !YANDEX_HOSTS.has(url.hostname)) return { kind: 'unsupported' };
     const path = url.pathname.replace(/\/+$/, '');
-    if (YANDEX_HOSTS.has(host)) {
-      const album = /^\/album\/\d+\/track\/(\d+)$/.exec(path);
-      const track = /^\/track\/(\d+)$/.exec(path);
-      const match = album || track;
-      return match && validTrackId(match[1])
-        ? { kind: 'track', source: 'y', id: match[1] }
-        : { kind: 'unsupported' };
-    }
-    if (JAMENDO_HOSTS.has(host)) {
-      const match = /^\/track\/(\d+)(?:\/[^/]*)?$/.exec(path);
-      return match && validTrackId(match[1])
-        ? { kind: 'track', source: 'j', id: match[1] }
-        : { kind: 'unsupported' };
-    }
-    return { kind: 'unsupported' };
+    const album = /^\/album\/\d+\/track\/(\d+)$/.exec(path);
+    const track = /^\/track\/(\d+)$/.exec(path);
+    const id = (album || track)?.[1];
+    return validTrackId(id) ? { kind: 'track', id } : { kind: 'unsupported' };
   }
   if (/^[a-z][\w+.-]*:/i.test(input)) return { kind: 'unsupported' };
   if (/^(?:\/|@)/.test(input)) return { kind: 'invalid' };
@@ -51,16 +41,12 @@ export function parseRequest(raw) {
   return query.length >= 2 && query.length <= 120 ? { kind: 'search', query } : { kind: 'invalid' };
 }
 
-export function validTrackId(value) {
-  return typeof value === 'string' && /^[1-9]\d{0,15}$/.test(value);
-}
-
 export function parseAction(data) {
   if (data === 'nav:home') return { kind: 'home' };
   if (data === 'nav:help') return { kind: 'help' };
-  const match = /^(track|download):(y|j):([1-9]\d{0,15})$/.exec(data || '');
-  if (!match) return { kind: 'invalid' };
-  return { kind: match[1], source: match[2], id: match[3] };
+  // Accept existing Yandex buttons (track:y:id) after the provider migration.
+  const match = /^(track|download):(?:y:)?([1-9]\d{0,15})$/.exec(data || '');
+  return match ? { kind: match[1], id: match[2] } : { kind: 'invalid' };
 }
 
 export function escapeHtml(value) {
@@ -73,23 +59,17 @@ export function trimLabel(value, length = 48) {
   return s.length > length ? s.slice(0, length - 1) + '…' : s;
 }
 
-export function isJamendoUrl(value) {
-  const url = parseHttpsUrl(value);
-  return Boolean(url && (url.hostname === 'jamendo.com' ||
-    url.hostname.endsWith('.jamendo.com')));
-}
-
 export function isYandexAudioUrl(value) {
   const url = parseHttpsUrl(value);
   if (!url) return false;
   const host = url.hostname;
-  const permitted = host === 'strm.yandex.net' ||
+  const allowed = host === 'strm.yandex.net' ||
     host.endsWith('.strm.yandex.net') ||
     host === 'storage.yandex.net' ||
     host.endsWith('.storage.yandex.net') ||
     host === 'storage.mds.yandex.net' ||
     host.endsWith('.storage.mds.yandex.net');
-  return permitted && (url.pathname.startsWith('/music-v2/raw/') ||
+  return allowed && (url.pathname.startsWith('/music-v2/raw/') ||
     url.pathname.startsWith('/get-mp3/'));
 }
 
