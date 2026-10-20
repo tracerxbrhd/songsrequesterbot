@@ -1,20 +1,25 @@
-# Songs Requester — Яндекс Музыка
+# Songs Requester — Roadmap
 
-## Current
-- [x] Only Yandex Music; remove all other providers and registry
-- [x] Shared-link parsing and catalog search
-- [x] Metadata via POST /tracks with track-ids
-- [x] Exact numeric HTTP 400–599 statuses and /diagnose
-- [x] GitHub Secrets-based OAuth, without tokens in Git
-- [x] Allowlisted raw MP3 URL handed to Telegram when permitted by Yandex
-- [x] Cached Telegram file_id in SQLite
-- [x] Regression tests for Serverless JavaScript and endpoints
-- [ ] Live smoke-test of metadata and search after diagnostic improvement (previously both HTTP 4XX)
-- [ ] Live smoke-test of raw MP3; last diagnostic returned HTTP 403
+## YC migration
+- [x] Python 3.12 Cloud Function: Telegram webhook, parser, keyboard UI
+- [x] Python yandex-music 3.2.2 for metadata/search/raw MP3
+- [x] Authenticated Telegram webhook + owner-only mode
+- [x] Yandex Lockbox runtime secrets; dedicated deploy and runtime SAs
+- [x] CI and GitHub Actions YC deployment
+- [x] Separate cutover action, only after live in-cloud preflight
+- [x] Removed old TGCloud code and workflows from active branch
+- [ ] Create Yandex Cloud folder resources and IAM permissions
+- [ ] Configure GitHub Actions Secret and Variables
+- [ ] Actual in-cloud probe without cutover
+- [ ] Cutover after confirming metadata and downloadable MP3
+- [ ] End-to-end Telegram test
 
-## Next
-- Better UI for search and available qualities
-- Better understanding of permitted download scenarios
-- More reliability and stale-cache recovery
+## Beyond first working version
+- Durable idempotency for long Telegram updates (e.g. YDB serverless)
+- Persistent Telegram file_id cache
+- Better diagnostic messages for unexpected provider errors
+- Optional long-audio task queue if downloads exceed Telegram webhook timeout
 
-Other music providers are out of scope until the owner changes this decision.
+Do not reintroduce other music providers without a new product decision.
+
+- [x] Warm update-id deduplication releases IDs on transient processing failures

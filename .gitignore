@@ -1,10 +1,21 @@
-node_modules/
-.tgcloud/
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+
+# Keys and local configuration
 .env
 .env.*
 !.env.example
-coverage/
+*.pem
+*.key
+*sa-key*.json
+yc-sa.json
+.lockbox/
 .DS_Store
 *.log
-# CI-generated OAuth secrets — never commit this module!
-tgcloud/lib/runtime-secrets.js
