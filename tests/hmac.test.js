@@ -26,3 +26,20 @@ test('signed get-file-info parameters match Yandex desktop client', () => {
       .update(message).digest('base64').slice(0, -1),
   );
 });
+
+test('HMAC handles unicode and still works without the TextEncoder global', () => {
+  const originalEncoder = globalThis.TextEncoder;
+  try {
+    globalThis.TextEncoder = undefined;
+    for (const [key, text] of [
+      ['ключ', 'Монеточка'],
+      ['secret 😀', 'Музыка🎵'],
+      ['key', 'invalid surrogate \uD800'],
+    ]) {
+      const expected = createHmac('sha256', key).update(text).digest('hex');
+      assert.equal(hex(hmacSha256(key, text)), expected);
+    }
+  } finally {
+    globalThis.TextEncoder = originalEncoder;
+  }
+});

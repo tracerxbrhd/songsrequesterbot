@@ -14,7 +14,7 @@ export const welcomeText =
   'Пришли ссылку на трек Яндекс Музыки или Jamendo либо напиши исполнителя и название.\n\n' +
   'Я найду композицию, покажу карточку и попробую отправить MP3 прямо в Telegram. ' +
   'Для Яндекса потребуется OAuth и доступ к незашифрованному MP3.\n\n' +
-  'Команды: /help · /status · /privacy';
+  'Команды: /help · /status · /diagnose · /privacy';
 
 export const helpText =
   '<b>🎧 Как пользоваться</b>\n\n' +
@@ -25,7 +25,7 @@ export const helpText =
   'Работают только файлы, которые API отдаёт как обычный MP3 (raw). ' +
   'Зашифрованные потоки не обрабатываются.\n' +
   '<b>Jamendo</b>: MP3 при наличии разрешения автора и Client ID.\n\n' +
-  '/status — подключение источников\n/id — Telegram ID\n/start — главная';
+  '/status — наличие ключей\n/diagnose — проверка API\n/id — Telegram ID\n/start — главная';
 
 export async function sendText(chatId, html, keyboard = backKeyboard) {
   return api.sendMessage({

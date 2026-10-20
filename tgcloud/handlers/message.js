@@ -3,7 +3,8 @@ import { eq } from 'sdk/db';
 import { users } from '../schema.js';
 import { JAMENDO_CLIENT_ID } from '../lib/config.js';
 import { parseRequest } from '../lib/pure.js';
-import { hasYandexOAuth } from '../lib/providers/yandex.js';
+import { hasYandexOAuth, diagnoseYandex } from '../lib/providers/yandex.js';
+import { publicYandexError, safeYandexErrorCode } from '../lib/providers/yandex-protocol.js';
 import { getTrack, findTracks } from '../lib/providers/registry.js';
 import { throttle } from '../lib/storage.js';
 import { welcomeText, helpText, homeKeyboard, backKeyboard, sendText, showTrack, showResults } from '../lib/ui.js';
@@ -12,7 +13,7 @@ async function handleLookup(chatId, request) {
   if (request.kind === 'track') {
     const track = await getTrack(request.source, request.id);
     return track ? showTrack(chatId, track) :
-      sendText(chatId, 'Не удалось найти композицию. Попробуй другую ссылку.');
+      sendText(chatId, '🔎 Композиция не найдена. Попробуй другую ссылку.');
   }
   if (request.kind === 'search') return showResults(chatId, request.query, await findTracks(request.query));
   return sendText(chatId, request.kind === 'unsupported'
@@ -25,7 +26,7 @@ export default async function (message) {
   const id = message.from.id;
   const chatId = message.chat.id;
   if (!Number.isSafeInteger(id)) return;
-  // The owner-only restriction is configured in BotFather, not duplicated here.
+  // Owner-only access is already enforced in BotFather for this personal bot.
   const input = typeof message.text === 'string' ? message.text.trim() : '';
   const command = /^\/([a-z]+)(?:@\w+)?(?:\s+([\s\S]*))?$/i.exec(input);
   const name = command?.[1]?.toLowerCase();
@@ -38,9 +39,19 @@ export default async function (message) {
   if (name === 'help') return sendText(chatId, helpText, backKeyboard);
   if (name === 'status') return sendText(chatId,
     '<b>⚙️ Источники</b>\n\n' +
-    'Яндекс OAuth: ' + (hasYandexOAuth() ? '✅ подключён' : '⚠️ не подключён') +
+    'OAuth Яндекса: ' + (hasYandexOAuth() ? '🔑 секрет загружен (доступ не проверен)' : '⚠️ не настроен') +
     '\nJamendo API: ' + (JAMENDO_CLIENT_ID ? '✅ подключён' : '⚪ не настроен') +
-    '\n\nРежим доступа: настройка в BotFather.', backKeyboard);
+    '\n\n/diagnose — проверить реальные ответы Яндекса.' +
+    '\nРежим доступа: ограничен в BotFather.', backKeyboard);
+  if (name === 'diagnose') {
+    const checks = await diagnoseYandex();
+    return sendText(chatId,
+      '<b>🩺 Диагностика API Яндекс Музыки</b>\n\n' +
+      'OAuth: ' + (hasYandexOAuth() ? '🔑 имеется' : '⚠️ отсутствует') +
+      '\n' + checks.join('\n') +
+      '\n\nПроверяются только коды и наличие результатов — данные аккаунта и токен не отображаются.',
+      backKeyboard);
+  }
   if (name === 'privacy') return sendText(chatId,
     '🔐 <b>Приватность</b>\n\nБот хранит Telegram ID, время запросов и кеш file_id. ' +
     'История поисковых запросов не сохраняется.\n\n' +
@@ -56,10 +67,11 @@ export default async function (message) {
   const request = parseRequest(name === 'search' ? argument : input);
   if (request.kind === 'invalid' || request.kind === 'unsupported') return handleLookup(chatId, request);
   if (!(await throttle(id))) return sendText(chatId, '⏳ Слишком быстро. Повтори запрос через несколько секунд.');
-  try { return await handleLookup(chatId, request); }
-  catch (e) {
-    console.warn('Music request failed', String(e?.message || e).slice(0, 80));
-    return sendText(chatId,
-      '⚠️ Музыкальный сервис сейчас не ответил. Попробуй позже или пришли прямую ссылку.');
+  try {
+    return await handleLookup(chatId, request);
+  } catch (error) {
+    console.warn('Music request failed', safeYandexErrorCode(error));
+    return sendText(chatId, publicYandexError(error) +
+      '\n\n/diagnose — проверить, где именно возникает ошибка.');
   }
 }
