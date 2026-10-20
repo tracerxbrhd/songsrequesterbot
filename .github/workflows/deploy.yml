@@ -1,0 +1,53 @@
+name: Deploy Songs Requester
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: songsrequesterbot-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Install CLI
+        run: npm install --no-audit --no-fund
+      - name: Check and test
+        run: |
+          npm run check
+          npm test
+      - name: Require Telegram Cloud CLI token
+        env:
+          TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
+        run: |
+          if [ -z "$TGCLOUD_TOKEN" ]; then
+            echo "::error::Set TGCLOUD_TOKEN in repository Actions secrets (BotFather → Serverless → CLI Access)."
+            exit 1
+          fi
+      - name: Fetch cloud revision
+        env:
+          TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
+        run: npx tgcloud fetch
+      - name: Deploy
+        env:
+          TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
+        run: npx tgcloud push
+      - name: Safe SQLite migrations
+        env:
+          TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
+        run: npx tgcloud migrate --safe
+      - name: Sync webhook
+        env:
+          TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
+        run: npx tgcloud webhook sync

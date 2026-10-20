@@ -1,0 +1,8 @@
+node_modules/
+.tgcloud/
+.env
+.env.*
+!.env.example
+coverage/
+.DS_Store
+*.log
