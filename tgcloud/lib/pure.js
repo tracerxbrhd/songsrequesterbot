@@ -1,24 +1,47 @@
 const YANDEX_HOSTS = new Set(['music.yandex.ru', 'music.yandex.com', 'music.yandex.by']);
 const JAMENDO_HOSTS = new Set(['jamendo.com', 'www.jamendo.com']);
 
+// Telegram Cloud runs JavaScript in a bare V8 isolate, not a browser or Node.
+// Parse a strictly limited HTTPS URL here instead of relying on browser globals.
+// The returned hostname/pathname are enough for fixed-domain music links.
+export function parseHttpsUrl(value) {
+  if (typeof value !== 'string' || value.length > 4096 ||
+      /[\u0000-\u0020\u007f\\]/.test(value)) return null;
+  const match = /^https:\/\/([^/?#]+)(\/[^?#]*)?(?:\?[^#]*)?(?:#.*)?$/i.exec(value);
+  if (!match) return null;
+  const hostname = match[1].toLowerCase();
+  if (hostname.length > 253 || !hostname.split('.').every((part) =>
+    part.length >= 1 && part.length <= 63 &&
+    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(part))) return null;
+  return { hostname, pathname: match[2] || '/' };
+}
+
+export function encodeQueryParams(params) {
+  return Object.entries(params).map(([key, value]) =>
+    encodeURIComponent(key) + '=' + encodeURIComponent(String(value))).join('&');
+}
+
 export function parseRequest(raw) {
   const input = typeof raw === 'string' ? raw.trim() : '';
-  if (!input || input.length > 500) return { kind: 'invalid' };
+  if (!input || input.length > 2048) return { kind: 'invalid' };
   if (/^https?:\/\//i.test(input)) {
-    let url;
-    try { url = new URL(input); } catch (_) { return { kind: 'unsupported' }; }
-    if (url.protocol !== 'https:' || url.username || url.password || url.port) return { kind: 'unsupported' };
-    const host = url.hostname.toLowerCase();
+    const url = parseHttpsUrl(input);
+    if (!url) return { kind: 'unsupported' };
+    const host = url.hostname;
     const path = url.pathname.replace(/\/+$/, '');
     if (YANDEX_HOSTS.has(host)) {
       const album = /^\/album\/\d+\/track\/(\d+)$/.exec(path);
       const track = /^\/track\/(\d+)$/.exec(path);
       const match = album || track;
-      return match ? { kind: 'track', source: 'y', id: match[1] } : { kind: 'unsupported' };
+      return match && validTrackId(match[1])
+        ? { kind: 'track', source: 'y', id: match[1] }
+        : { kind: 'unsupported' };
     }
     if (JAMENDO_HOSTS.has(host)) {
       const match = /^\/track\/(\d+)(?:\/[^/]*)?$/.exec(path);
-      return match ? { kind: 'track', source: 'j', id: match[1] } : { kind: 'unsupported' };
+      return match && validTrackId(match[1])
+        ? { kind: 'track', source: 'j', id: match[1] }
+        : { kind: 'unsupported' };
     }
     return { kind: 'unsupported' };
   }
@@ -51,28 +74,23 @@ export function trimLabel(value, length = 48) {
 }
 
 export function isJamendoUrl(value) {
-  try {
-    const url = new URL(value);
-    const host = url.hostname.toLowerCase();
-    return url.protocol === 'https:' && !url.username && !url.password && !url.port &&
-      (host === 'jamendo.com' || host.endsWith('.jamendo.com'));
-  } catch (_) { return false; }
+  const url = parseHttpsUrl(value);
+  return Boolean(url && (url.hostname === 'jamendo.com' ||
+    url.hostname.endsWith('.jamendo.com')));
 }
 
 export function isYandexAudioUrl(value) {
-  try {
-    const url = new URL(value);
-    const host = url.hostname.toLowerCase();
-    const permitted = host === 'strm.yandex.net' ||
-      host.endsWith('.strm.yandex.net') ||
-      host === 'storage.yandex.net' ||
-      host.endsWith('.storage.yandex.net') ||
-      host === 'storage.mds.yandex.net' ||
-      host.endsWith('.storage.mds.yandex.net');
-    return url.protocol === 'https:' && !url.username && !url.password && !url.port &&
-      permitted && (url.pathname.startsWith('/music-v2/raw/') ||
-        url.pathname.startsWith('/get-mp3/'));
-  } catch (_) { return false; }
+  const url = parseHttpsUrl(value);
+  if (!url) return false;
+  const host = url.hostname;
+  const permitted = host === 'strm.yandex.net' ||
+    host.endsWith('.strm.yandex.net') ||
+    host === 'storage.yandex.net' ||
+    host.endsWith('.storage.yandex.net') ||
+    host === 'storage.mds.yandex.net' ||
+    host.endsWith('.storage.mds.yandex.net');
+  return permitted && (url.pathname.startsWith('/music-v2/raw/') ||
+    url.pathname.startsWith('/get-mp3/'));
 }
 
 export function displayDuration(seconds) {
