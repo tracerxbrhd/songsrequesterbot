@@ -12,18 +12,20 @@ export const backKeyboard = {
 export const welcomeText =
   '<b>🎵 Songs Requester</b>\n\n' +
   'Пришли ссылку на трек Яндекс Музыки или Jamendo либо напиши исполнителя и название.\n\n' +
-  'Я найду композицию и покажу сведения. Файлы можно получить только из источников, разрешающих загрузку.\n\n' +
-  'Команды: /help · /id · /privacy';
+  'Я найду композицию, покажу карточку и попробую отправить MP3 прямо в Telegram. ' +
+  'Для Яндекса потребуется OAuth и доступ к незашифрованному MP3.\n\n' +
+  'Команды: /help · /status · /privacy';
 
 export const helpText =
   '<b>🎧 Как пользоваться</b>\n\n' +
   '1. Вставь ссылку вида music.yandex.ru/album/123/track/456.\n' +
   '2. Или отправь «Исполнитель — Название».\n' +
-  '3. Выбери результат поиска.\n\n' +
-  'Яндекс Музыка: поиск, карточка и ссылка на оригинал. ' +
-  'Скачивание закрытого каталога не поддерживается.\n' +
-  'Jamendo: MP3 при наличии разрешения автора и подключённого API.\n\n' +
-  '/id — твой Telegram ID\n/start — главная';
+  '3. Выбери трек и нажми «Скачать MP3».\n\n' +
+  '<b>Яндекс Музыка</b>: используется твой OAuth-аккаунт. ' +
+  'Работают только файлы, которые API отдаёт как обычный MP3 (raw). ' +
+  'Зашифрованные потоки не обрабатываются.\n' +
+  '<b>Jamendo</b>: MP3 при наличии разрешения автора и Client ID.\n\n' +
+  '/status — подключение источников\n/id — Telegram ID\n/start — главная';
 
 export async function sendText(chatId, html, keyboard = backKeyboard) {
   return api.sendMessage({
@@ -47,15 +49,17 @@ export async function displayText(chatId, html, keyboard, message) {
 
 export async function showTrack(chatId, track, message) {
   const service = track.source === 'j' ? 'Jamendo' : 'Яндекс Музыка';
-  const status = track.downloadAllowed ? '✅ Доступен MP3' : '🔒 Файл недоступен для передачи ботом';
+  const status = track.source === 'y'
+    ? '🎧 MP3: проверка доступности при загрузке'
+    : track.downloadAllowed ? '✅ Доступен MP3' : '🔒 Правообладатель запретил загрузку';
   const html = '<b>🎵 ' + escapeHtml(track.title) + '</b>\n' +
     '👤 ' + escapeHtml(track.artist) +
     (track.album ? '\n💿 ' + escapeHtml(track.album) : '') +
     '\n⏱ ' + displayDuration(track.duration) +
     '\n📀 ' + service + '\n\n' + status;
   const buttons = [];
-  if (track.downloadAllowed && track.source === 'j') {
-    buttons.push([{ text: '⬇️ Получить MP3', callback_data: 'download:j:' + track.id }]);
+  if (track.source === 'y' || (track.source === 'j' && track.downloadAllowed)) {
+    buttons.push([{ text: '⬇️ Скачать MP3', callback_data: 'download:' + track.source + ':' + track.id }]);
   }
   buttons.push([{ text: '🔗 Открыть в ' + service, url: track.url }]);
   buttons.push([{ text: '🏠 В начало', callback_data: 'nav:home' }]);

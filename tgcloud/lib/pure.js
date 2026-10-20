@@ -37,7 +37,6 @@ export function parseAction(data) {
   if (data === 'nav:help') return { kind: 'help' };
   const match = /^(track|download):(y|j):([1-9]\d{0,15})$/.exec(data || '');
   if (!match) return { kind: 'invalid' };
-  if (match[1] === 'download' && match[2] !== 'j') return { kind: 'invalid' };
   return { kind: match[1], source: match[2], id: match[3] };
 }
 
@@ -57,6 +56,22 @@ export function isJamendoUrl(value) {
     const host = url.hostname.toLowerCase();
     return url.protocol === 'https:' && !url.username && !url.password && !url.port &&
       (host === 'jamendo.com' || host.endsWith('.jamendo.com'));
+  } catch (_) { return false; }
+}
+
+export function isYandexAudioUrl(value) {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    const permitted = host === 'strm.yandex.net' ||
+      host.endsWith('.strm.yandex.net') ||
+      host === 'storage.yandex.net' ||
+      host.endsWith('.storage.yandex.net') ||
+      host === 'storage.mds.yandex.net' ||
+      host.endsWith('.storage.mds.yandex.net');
+    return url.protocol === 'https:' && !url.username && !url.password && !url.port &&
+      permitted && (url.pathname.startsWith('/music-v2/raw/') ||
+        url.pathname.startsWith('/get-mp3/'));
   } catch (_) { return false; }
 }
 

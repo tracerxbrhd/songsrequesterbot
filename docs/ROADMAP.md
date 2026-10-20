@@ -1,20 +1,19 @@
 # Дорожная карта
 
-## v0.1 — MVP
-- [x] Закрытый Telegram-бот с /id, /start, /help, /privacy, /delete
-- [x] Yandex track URL + text search + metadata
-- [x] Jamendo search + permitted MP3 download
-- [x] Serverless SQLite cache and throttling
-- [x] GitHub Actions CI/CD + unit tests
-- [ ] Cloud smoke test after TGCLOUD_TOKEN and bot setup
-- [ ] Configure owner Telegram ID and Jamendo Client ID
+## Текущий PR
+- [x] Поиск и метаданные Яндекс Музыки
+- [x] Запрос обычного MP3 с OAuth и подписью /get-file-info (raw)
+- [x] Отправка MP3 в Telegram через URL или байтовый fallback
+- [x] Jamendo с проверкой разрешения правообладателя
+- [x] Cache file_id в SQLite
+- [x] Тесты подписи, URL и парсеров
+- [x] OAuth токен генерируется только во временный модуль CI
+- [x] Удалена дублирующая проверка владельца: доступ ограничен BotFather
+- [ ] Live smoke-test с реальным токеном Яндекса и Telegram Cloud
+- [ ] Проверка работы MP3 на конкретных треках
 
-## v0.2
-- Preview audio and track cover for supported sources
-- Better search pagination and per-provider error feedback
-- Album / playlist metadata without bulk copyrighted-content extraction
-- Optional audio size preflight and structured logging
-
-## v0.3
-- Additional download-permitted sources with individual license policies
-- Public launch checklist: moderation, rate limits, privacy, provider quotas
+## Следующий этап
+- Выбор доступного качества аудио
+- Более полная диагностика отказов Yandex API
+- Дополнительные разрешённые источники
+- Опциональные плейлисты (метаданные, без массового копирования контента)

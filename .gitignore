@@ -6,3 +6,5 @@ node_modules/
 coverage/
 .DS_Store
 *.log
+# CI-generated OAuth secrets — never commit this module!
+tgcloud/lib/runtime-secrets.js

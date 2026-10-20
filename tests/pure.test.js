@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  parseRequest, parseAction, escapeHtml, isJamendoUrl, displayDuration,
+  parseRequest, parseAction, escapeHtml, isJamendoUrl,
+  isYandexAudioUrl, displayDuration,
 } from '../tgcloud/lib/pure.js';
 import { normalizeYandex, normalizeJamendo } from '../tgcloud/lib/providers/normalize.js';
 
@@ -32,11 +33,11 @@ test('rejects offsite URLs, spoofed domains and unsafe protocols', () => {
   }
 });
 
-test('validates bounds and callback actions', () => {
+test('validates bounds and both provider download actions', () => {
   assert.equal(parseRequest('x').kind, 'invalid');
   assert.equal(parseRequest('x'.repeat(501)).kind, 'invalid');
   assert.deepEqual(parseAction('download:j:1234'), { kind: 'download', source: 'j', id: '1234' });
-  assert.equal(parseAction('download:y:1234').kind, 'invalid');
+  assert.deepEqual(parseAction('download:y:1234'), { kind: 'download', source: 'y', id: '1234' });
   assert.equal(parseAction('track:y:0').kind, 'invalid');
   assert.equal(parseAction('track:y:123:fake').kind, 'invalid');
 });
@@ -53,7 +54,6 @@ test('normalizes Yandex metadata without a download URL', () => {
   });
   assert.equal(track.artist, 'Composer');
   assert.equal(track.duration, 83);
-  assert.equal(track.downloadAllowed, false);
   assert.equal(track.downloadUrl, null);
 });
 
@@ -66,4 +66,13 @@ test('Jamendo honors audiodownload_allowed and validates URL hosts', () => {
   assert.equal(normalizeJamendo({ ...sample, audiodownload_allowed: false }).downloadAllowed, false);
   assert.equal(normalizeJamendo({ ...sample, audiodownload_allowed: true,
     audiodownload: 'https://other.example/audio.mp3' }).downloadAllowed, false);
+});
+
+test('only trusted Yandex CDN hosts and raw MP3 paths pass URL validation', () => {
+  assert.equal(isYandexAudioUrl('https://media.strm.yandex.net/music-v2/raw/abc/mp3'), true);
+  assert.equal(isYandexAudioUrl('https://s50vla.storage.yandex.net/get-mp3/abc/123/1.mp3'), true);
+  assert.equal(isYandexAudioUrl('https://music.yandex.ru/track/123'), false);
+  assert.equal(isYandexAudioUrl('https://strm.yandex.net.evil.tld/music-v2/raw/1'), false);
+  assert.equal(isYandexAudioUrl('https://media.strm.yandex.net/music-v2/encraw/abc'), false);
+  assert.equal(isYandexAudioUrl('http://media.strm.yandex.net/music-v2/raw/abc'), false);
 });

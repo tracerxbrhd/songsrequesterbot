@@ -1,16 +1,12 @@
 import { db } from 'sdk';
 import { eq } from 'sdk/db';
 import { users } from '../schema.js';
-import { OWNER_TELEGRAM_ID, PUBLIC_MODE } from '../lib/config.js';
+import { JAMENDO_CLIENT_ID } from '../lib/config.js';
 import { parseRequest } from '../lib/pure.js';
+import { hasYandexOAuth } from '../lib/providers/yandex.js';
 import { getTrack, findTracks } from '../lib/providers/registry.js';
 import { throttle } from '../lib/storage.js';
 import { welcomeText, helpText, homeKeyboard, backKeyboard, sendText, showTrack, showResults } from '../lib/ui.js';
-
-function allowed(id) {
-  return Number.isSafeInteger(id) &&
-    ((OWNER_TELEGRAM_ID > 0 && id === OWNER_TELEGRAM_ID) || PUBLIC_MODE);
-}
 
 async function handleLookup(chatId, request) {
   if (request.kind === 'track') {
@@ -18,14 +14,10 @@ async function handleLookup(chatId, request) {
     return track ? showTrack(chatId, track) :
       sendText(chatId, 'Не удалось найти композицию. Попробуй другую ссылку.');
   }
-  if (request.kind === 'search') {
-    const tracks = await findTracks(request.query);
-    return showResults(chatId, request.query, tracks);
-  }
-  return sendText(chatId,
-    request.kind === 'unsupported'
-      ? '⚠️ Пока принимаются ссылки на отдельные треки Яндекс Музыки и Jamendo.'
-      : '✍️ Пришли ссылку на трек либо название длиной от 2 до 120 символов.');
+  if (request.kind === 'search') return showResults(chatId, request.query, await findTracks(request.query));
+  return sendText(chatId, request.kind === 'unsupported'
+    ? '⚠️ Пока принимаются ссылки на отдельные треки Яндекс Музыки и Jamendo.'
+    : '✍️ Пришли ссылку на трек либо название длиной от 2 до 120 символов.');
 }
 
 export default async function (message) {
@@ -33,6 +25,7 @@ export default async function (message) {
   const id = message.from.id;
   const chatId = message.chat.id;
   if (!Number.isSafeInteger(id)) return;
+  // The owner-only restriction is configured in BotFather, not duplicated here.
   const input = typeof message.text === 'string' ? message.text.trim() : '';
   const command = /^\/([a-z]+)(?:@\w+)?(?:\s+([\s\S]*))?$/i.exec(input);
   const name = command?.[1]?.toLowerCase();
@@ -41,17 +34,15 @@ export default async function (message) {
   if (name === 'id' || name === 'whoami') {
     return sendText(chatId, '🆔 Твой Telegram ID: <code>' + id + '</code>');
   }
-
-  if (!allowed(id)) {
-    const info = OWNER_TELEGRAM_ID ? '🔐 Это личный бот. Доступ закрыт.' :
-      '🔧 Владелец ещё не настроен. Отправь /id и укажи полученный номер в tgcloud/lib/config.js.';
-    return sendText(chatId, info, null);
-  }
-
   if (name === 'start' || name === 'menu') return sendText(chatId, welcomeText, homeKeyboard);
   if (name === 'help') return sendText(chatId, helpText, backKeyboard);
+  if (name === 'status') return sendText(chatId,
+    '<b>⚙️ Источники</b>\n\n' +
+    'Яндекс OAuth: ' + (hasYandexOAuth() ? '✅ подключён' : '⚠️ не подключён') +
+    '\nJamendo API: ' + (JAMENDO_CLIENT_ID ? '✅ подключён' : '⚪ не настроен') +
+    '\n\nРежим доступа: настройка в BotFather.', backKeyboard);
   if (name === 'privacy') return sendText(chatId,
-    '🔐 <b>Приватность</b>\n\nБот хранит Telegram ID, время запросов и общий кеш file_id. ' +
+    '🔐 <b>Приватность</b>\n\nБот хранит Telegram ID, время запросов и кеш file_id. ' +
     'История поисковых запросов не сохраняется.\n\n' +
     '/delete — удалить свой пользовательский идентификатор из базы.', backKeyboard);
   if (name === 'delete') {
@@ -65,11 +56,10 @@ export default async function (message) {
   const request = parseRequest(name === 'search' ? argument : input);
   if (request.kind === 'invalid' || request.kind === 'unsupported') return handleLookup(chatId, request);
   if (!(await throttle(id))) return sendText(chatId, '⏳ Слишком быстро. Повтори запрос через несколько секунд.');
-  try {
-    return await handleLookup(chatId, request);
-  } catch (e) {
-    console.warn('Music request failed', String(e?.message || e).slice(0, 160));
+  try { return await handleLookup(chatId, request); }
+  catch (e) {
+    console.warn('Music request failed', String(e?.message || e).slice(0, 80));
     return sendText(chatId,
-      '⚠️ Музыкальный сервис сейчас не ответил. Попробуй позже или пришли прямую ссылку на трек.');
+      '⚠️ Музыкальный сервис сейчас не ответил. Попробуй позже или пришли прямую ссылку.');
   }
 }

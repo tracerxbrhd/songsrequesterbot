@@ -1,34 +1,58 @@
-# 🎵 Songs Requester Bot
+# 🎵 Songs Requester — личный Telegram Music Bot
 
-Лёгкий Telegram-бот на **Telegram Cloud Serverless** с модульной архитектурой музыкальных провайдеров. Начинает работу в **закрытом режиме**, при необходимости можно включить публичный.
+Telegram Cloud Serverless-бот для поиска треков и получения аудиофайлов через Telegram.
 
-## Возможности v0.1
+## Возможности
 
-- Ссылки на отдельные треки **Яндекс Музыки**: получение сведений, поиск и ссылка на оригинал.
-- Поиск по названию или исполнителю через Яндекс Музыку; поиск Jamendo включается после настройки Client ID.
-- **Jamendo**: передача MP3 прямо в Telegram, **только если** автор разрешил скачивание.
-- Кеш Telegram file_id в SQLite для повторной отправки разрешённых файлов.
-- Личный режим по Telegram ID, публичный переключатель, защита от частых запросов.
-- Без сервера, FFmpeg и Mini App. Только JavaScript, SDK и SQLite.
+- **Яндекс Музыка:** ссылки на отдельные треки, поиск по названию и артисту.
+- **Скачать MP3:** после настройки OAuth бот пытается запросить доступный аккаунту обычный MP3 через неофициальный API Яндекс Музыки и прислать в Telegram.
+- **Jamendo:** скачивание MP3 при явном разрешении автора и наличии API Client ID.
+- Общий кеш Telegram file_id в SQLite, чтобы один и тот же аудиофайл повторно не загружался.
+- Русскоязычный интерфейс; команды /start, /help, /status, /search, /id, /privacy, /delete.
+- Только Telegram Cloud Serverless, без отдельного VPS и Mini App.
 
-**Ограничение:** этот релиз **не скачивает закрытый каталог Яндекс Музыки**. Неофициальная доступность потоковых данных не равна разрешению на копирование. Бот не обходит DRM, шифрование или ограничения аккаунта.
+**Ограничение:** Яндекс может не выдать незашифрованный MP3 (raw) для конкретного трека даже при действующей подписке. Шифрованные потоки encraw/DRM не расшифровываются. Работа неофициального API может меняться. Пользуйся файлами только в пределах предоставленных прав и правил сервиса.
 
-## Первый запуск
+## Личный доступ
 
-1. В [@BotFather](https://t.me/BotFather) включи **Serverless** для созданного бота и возьми **CLI Access Token** (формат app<ID>:...), не Bot API Token.
-2. В GitHub: **Settings → Secrets and variables → Actions** добавь секрет **TGCLOUD_TOKEN**.
-3. После первого деплоя отправь боту **/id** — он ответит твоим Telegram ID (даже до настройки владельца).
-4. Измени **OWNER_TELEGRAM_ID** в [tgcloud/lib/config.js](tgcloud/lib/config.js) на полученный номер и снова задеплой через PR.
-5. Опционально зарегистрируй приложение на [Jamendo Developer Portal](https://devportal.jamendo.com/) и укажи публичный **JAMENDO_CLIENT_ID** в том же файле.
-6. При желании переведи **PUBLIC_MODE** в true. Перед публичным включением проверь права, ограничения API и опубликованную политику обработки данных.
+**Владелец уже ограничил использование бота в BotFather**, поэтому в коде больше нет отдельной проверки OWNER_TELEGRAM_ID или флага PUBLIC_MODE. Если ограничение BotFather будет снято, код сам по себе не ограничивает пользователей.
 
-Токен TGCLOUD_TOKEN **используется только в GitHub Actions** для загрузки кода, а не внутри бота. Для работы с Telegram API в облачных модулях используется api из sdk.
+## GitHub Actions Secrets
 
-После мерджа в main workflow последовательно делает: проверка → tgcloud fetch → push → migrate --safe → webhook sync.
+Добавь в репозитории: Settings → Secrets and variables → Actions → New repository secret.
 
-## Локальная проверка
+| Имя | Для чего |
+|---|---|
+| **TGCLOUD_TOKEN** | BotFather → Serverless → CLI Access; это не Bot API token |
+| **YANDEX_OAUTH_TOKEN** | OAuth access token *твоего* аккаунта Яндекс Музыки |
 
-Требуется Node.js 22+:
+OAuth можно получить самостоятельно, например через **Device Flow** из [документации MarshalX](https://ym.marshal.dev/token/), на собственном устройстве. Не отправляй токен в Telegram, GitHub Issues, комментарии PR или этот чат. Не записывай его в tgcloud/lib/config.js.
+
+При деплое скрипт scripts/prepare-runtime-secrets.mjs считывает GitHub Actions Secret и создаёт временный, игнорируемый Git файл tgcloud/lib/runtime-secrets.js. Он загружается в Telegram Cloud вместе с приложением, но **не добавляется в git**. Если YANDEX_OAUTH_TOKEN отсутствует, поиск работает, а загрузка из Яндекса подскажет подключить OAuth.
+
+**Ограничение безопасности:** Telegram Cloud Serverless пока не предоставляет документированное хранилище runtime-секретов. Сгенерированный модуль с OAuth доступен редакторам проекта в BotFather. Не открывай посторонним доступ к проекту Serverless, отзывай скомпрометированный токен в Яндексе и перевыпускай при необходимости. OAuth токен не обновляется автоматически.
+
+## Как проверить после деплоя
+
+1. Влей PR; после этого GitHub Actions запустит Deploy Songs Requester.
+2. В Telegram отправь боту **/status** — проверь строку «Яндекс OAuth: ✅ подключён».
+3. Отправь боту ссылку вида https://music.yandex.ru/album/123/track/456.
+4. Нажми «⬇️ Скачать MP3».
+5. При наличии обычного MP3 (raw) получишь аудиофайл. При недоступности — объяснение.
+6. Запроси тот же трек повторно: должен использоваться Telegram file_id из SQLite.
+
+Бот не поддерживает FLAC, альбомы, плейлисты или большие (> ограничений Telegram Cloud) файлы в этой версии.
+
+## Техническая реализация
+
+- Запрос с OAuth к подписанному методу **/get-file-info**, codec=mp3, transport=raw; попытка качества hq, затем nq.
+- HMAC-SHA256 целиком на JavaScript: Node и crypto.subtle внутри Telegram Cloud не нужны.
+- Проверка хоста и пути возвращённой CDN-ссылки перед передачей аудио.
+- Сначала отправка MP3 по URL с помощью Telegram Bot API, при распознанной URL-ошибке — резервная загрузка байтов до 25 МБ.
+- В SQLite сохраняется только Telegram file_id, а не истекающая ссылка Яндекса.
+- Деплой: fetch → push → migrate --safe → webhook sync.
+
+Локальная проверка с Node.js 22+:
 
 ~~~sh
 npm install --no-audit --no-fund
@@ -36,20 +60,10 @@ npm run check
 npm test
 ~~~
 
-Для ручного деплоя: npx tgcloud login, затем npx tgcloud push, npx tgcloud migrate --safe, npx tgcloud webhook sync.
+Команда check создаёт пустой файл временной конфигурации, если переменная окружения YANDEX_OAUTH_TOKEN не передана. Git игнорирует этот файл.
 
-## Структура
+## Источники
 
-- tgcloud/handlers/ — Telegram message и callback_query;
-- tgcloud/lib/providers/ — адаптеры Яндекс Музыки и Jamendo;
-- tgcloud/lib/delivery.js — отправка и контролируемая загрузка MP3;
-- tgcloud/lib/storage.js, tgcloud/schema.js — троттлинг и кеш;
-- tgcloud/lib/pure.js — чистые парсеры с тестами.
-
-## Известные ограничения
-
-- Вызовы неофициального API Яндекс Музыки могут потребовать авторизацию или поменяться без предупреждения; при ошибке бот честно сообщает о недоступности источника.
-- JAMENDO_CLIENT_ID нужен для поиска и выдачи Jamendo. Установка/запуск библиотеки Python в Telegram Cloud не поддерживается.
-- Отправка аудио по URL зависит от того, примет ли её Telegram; предусмотрен резервный вариант загрузки до 25 МБ, что укладывается в ограничение HTTP-ответа 30 МБ.
-- Отправка по file_id не гарантирует вечную валидность ссылки; ошибочный кеш автоматически очищается.
-- Онлайн-прогон против Telegram Cloud, Яндекса и Jamendo требует токена и внешних сервисов; локальные тесты проверяют чистую логику, не гарантируют интеграцию.
+- [Неофициальная библиотека Yandex Music API](https://github.com/MarshalX/yandex-music-api)
+- [Метод tracks_file_info и форматы raw/encraw](https://ym.marshal.dev/yandex_music._client_async.tracks/)
+- [Документация Telegram Serverless](https://blogfork.telegram.org/bots/serverless)
